@@ -77,7 +77,7 @@ func NewBackupName() string {
 
 // CreateBackup - create new backup of all tables matched by tablePattern
 // If backupName is empty string will use default backup name
-func CreateBackup(cfg *config.Config, backupName, tablePattern string, schemaOnly bool, version string) error {
+func CreateBackup(cfg *config.Config, backupName, tablePattern string, schemaOnly bool, version string, partitionID string) error {
 	if backupName == "" {
 		backupName = NewBackupName()
 	}
@@ -154,7 +154,7 @@ func CreateBackup(cfg *config.Config, backupName, tablePattern string, schemaOnl
 		var partitions map[string][]metadata.Part
 		if !schemaOnly {
 			log.Debug("create data")
-			partitions, realSize, err = AddTableToBackup(ch, backupName, &table)
+			partitions, realSize, err = AddTableToBackup(ch, backupName, &table, partitionID)
 			if err != nil {
 				log.Error(err.Error())
 				if removeBackupErr := RemoveBackupLocal(cfg, backupName); removeBackupErr != nil {
@@ -227,7 +227,7 @@ func CreateBackup(cfg *config.Config, backupName, tablePattern string, schemaOnl
 	return nil
 }
 
-func AddTableToBackup(ch *clickhouse.ClickHouse, backupName string, table *clickhouse.Table) (map[string][]metadata.Part, map[string]int64, error) {
+func AddTableToBackup(ch *clickhouse.ClickHouse, backupName string, table *clickhouse.Table, partitionID string) (map[string][]metadata.Part, map[string]int64, error) {
 	log := apexLog.WithFields(apexLog.Fields{
 		"backup":    backupName,
 		"operation": "create",
@@ -271,8 +271,14 @@ func AddTableToBackup(ch *clickhouse.ClickHouse, backupName string, table *click
 		return nil, nil, nil
 	}
 	backupID := strings.ReplaceAll(uuid.New().String(), "-", "")
-	if err := ch.FreezeTable(table, backupID); err != nil {
-		return nil, nil, err
+	if partitionID == "" {
+		if err := ch.FreezeTable(table, backupID); err != nil {
+			return nil, nil, err
+		}
+	} else {
+		if err := ch.FreezeTableParts(table, backupID, partitionID); err != nil {
+			return nil, nil, err
+		}
 	}
 	log.Debug("freezed")
 	realSize := map[string]int64{}

@@ -340,6 +340,51 @@ func (ch *ClickHouse) FreezeTable(table *Table, name string) error {
 	return nil
 }
 
+// FreezeTable only a partition for a table
+func (ch *ClickHouse) FreezeTableParts(table *Table, name string, partitionID string) error {
+	var partitions []struct {
+		PartitionID string `db:"partition_id"`
+	}
+	if strings.HasPrefix(table.Engine, "Replicated") && ch.Config.SyncReplicatedTables {
+		query := fmt.Sprintf("SYSTEM SYNC REPLICA `%s`.`%s`;", table.Database, table.Name)
+		if _, err := ch.Query(query); err != nil {
+			log.Warnf("can't sync replica: %v", err)
+		} else {
+			log.WithField("table", fmt.Sprintf("%s.%s", table.Database, table.Name)).Debugf("replica synced")
+		}
+	}
+	q := fmt.Sprintf("SELECT DISTINCT partition_id FROM `system`.`parts` WHERE database='%s' AND table='%s' AND partition_id like '%s'", table.Database, table.Name, partitionID)
+	if err := ch.conn.Select(&partitions, q); err != nil {
+		return fmt.Errorf("can't get partitions for '%s.%s': %w", table.Database, table.Name, err)
+	}
+	withNameQuery := ""
+	if name != "" {
+		withNameQuery = fmt.Sprintf("WITH NAME '%s'", name)
+	}
+	for _, item := range partitions {
+		log.Debugf("  partition '%v'", item.PartitionID)
+		query := fmt.Sprintf(
+			"ALTER TABLE `%v`.`%v` FREEZE PARTITION ID '%v' %s;",
+			table.Database,
+			table.Name,
+			item.PartitionID,
+			withNameQuery,
+		)
+		if item.PartitionID == "all" {
+			query = fmt.Sprintf(
+				"ALTER TABLE `%v`.`%v` FREEZE PARTITION tuple() %s;",
+				table.Database,
+				table.Name,
+				withNameQuery,
+			)
+		}
+		if _, err := ch.Query(query); err != nil {
+			return fmt.Errorf("can't freeze partition '%s': %w", item.PartitionID, err)
+		}
+	}
+	return nil
+}
+
 func (ch *ClickHouse) CleanShadow(name string) error {
 	disks, err := ch.GetDisks()
 	if err != nil {
