@@ -89,7 +89,7 @@ func main() {
 				cli.StringFlag{
 					Name:   "partition, p",
 					Hidden: false,
-					Usage:  "Partiion <yyyymmdd>",
+					Usage:  "Partition <yyyymmdd>",
 				},
 			),
 		},
@@ -119,7 +119,7 @@ func main() {
 				cli.StringFlag{
 					Name:   "partition, p",
 					Hidden: false,
-					Usage:  "Partiion <yyyymmdd>",
+					Usage:  "Partition <yyyymmdd>",
 				},
 			),
 		},
